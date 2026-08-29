@@ -37,7 +37,7 @@
 5. **Qwen3-VL 视觉问答**  
    同一张图先让 CLIP 在固定候选里打分，再让 Qwen3-VL 自由生成描述和空间关系。看 chat template、视觉 token、prefill 和 `generate()` 分别做了什么。
 
-课堂建议 3～4 小时。Notebook 顶部有开关：`QUICK_MODE=True` 时只用小子集，适合当堂演示。
+课堂建议 3～4 小时。源 Notebook 默认 `QUICK_MODE=True`，只用小子集方便当堂演示。`.executed.ipynb` 是 **完整实验**：CIFAR-100 全量、Flickr1K 全部 1000 张图，并打开了连续视觉问答。
 
 ---
 
@@ -65,19 +65,19 @@ export HF_DATASETS_TRUST_REMOTE_CODE=1
 
 ---
 
-## 一次实际运行的参考数字
+## 一次完整运行的参考数字
 
-下面是在 RTX 4080 SUPER、`QUICK_MODE=True` 下的一次结果，只用来建立数量级直觉。换机器、换子集、换随机种子都会有差异。
+下面是在 RTX 4080 SUPER 上、`QUICK_MODE=False` 的全量结果。换机器和软件版本会有差异。
 
 | 实验 | 设定 | 结果 |
 |---|---|---|
-| CLIP 零样本 | CIFAR-100，1000 张测试图 | 单模板 Top-1 66.0%；prompt ensemble Top-1 66.4% |
-| 图文检索 | Flickr1K 前 100 张图 | Image→Text R@1 97%；Text→Image R@1 84.4% |
-| Linear Probe | 5000 训练 / 1000 测试 | sklearn 73.4%；PyTorch 线性头 73.0% |
+| CLIP 零样本 | CIFAR-100 全部 10000 张测试图 | 单模板 Top-1 **64.47%** / Top-5 88.38%；prompt ensemble Top-1 **65.05%** / Top-5 88.76% |
+| 图文检索 | Flickr1K 全部 1000 张图、5000 条描述 | Image→Text R@1 **79.40%**、R@5 95.00%、R@10 98.10%；Text→Image R@1 **58.84%**、R@5 83.46%、R@10 90.04% |
+| Linear Probe | 全部 50000 训练 / 10000 测试，冻结 CLIP | sklearn **80.07%**；PyTorch 线性头 10 epoch **79.79%** |
 | CLIP 问海滩图 | 4 个固定候选 | “人与狗在海滩”得到全部概率质量 |
-| Qwen3-VL | 同一张图开放问答 | 生成了海滩、击掌、牵引绳等描述 |
+| Qwen3-VL | 同一张图开放描述 + 4 道连续问答 | 能写场景、空间关系、动物数量和室内外证据；CLIP 做不到这种未枚举的回答 |
 
-检索数字在 100 张图上会偏高。放到完整 1000 张时，Recall@1 通常会下降，因为干扰项变多了。
+和课堂小子集相比：Flickr 从 100 张扩到 1000 张后，Text→Image R@1 从约 84% 降到约 59%。干扰项变多了，这是预期现象，不是模型突然变差。
 
 ---
 
