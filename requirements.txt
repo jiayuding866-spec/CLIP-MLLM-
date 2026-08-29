@@ -1,0 +1,10 @@
+transformers>=4.57.0,<5.0.0
+datasets>=3.0.0,<4.0.0
+accelerate
+scikit-learn
+matplotlib
+seaborn
+pandas
+pillow
+tqdm
+huggingface_hub

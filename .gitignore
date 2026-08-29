@@ -1,0 +1,23 @@
+# Local experiment outputs and caches
+clip_mllm_lab/
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+*.npz
+
+# Data and model weights (download at runtime)
+data/
+*.tar.gz
+
+# Environment / secrets
+.env
+.env.*
+.venv/
+venv/
+.ssh/
+*.pem
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
