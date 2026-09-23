@@ -1,61 +1,84 @@
-# 从相似度矩阵到视觉问答：CLIP 与 MLLM 的能力边界
+# From Similarity Scores to Visual QA
 
-这是一份课堂实战 Notebook。它不把 CLIP、检索、线性探针和视觉问答拆成四段互不相关的 API 演示，而是反复问同一个问题：
+[English](README.md) · [中文](README_zh.md)
 
-**一个只会算“图和文有多像”的模型，到底能做什么？什么时候必须换成会写句子的多模态大模型？**
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![CLIP](https://img.shields.io/badge/CLIP-Radford%20et%20al.-b31b1b.svg)](https://arxiv.org/abs/2103.00020)
 
-主线是 **CLIP**。SigLIP 2 只做对照，用来看训练目标和分数含义差在哪里。最后用 **Qwen3-VL-2B-Instruct** 做开放式视觉问答，对比两种输出形式。
+This repository is an independent study of **what a similarity model can do with language, and where it has to give way to a model that writes sentences**.
 
----
+The spine is **CLIP** (`openai/clip-vit-base-patch32`). I inspect the image encoder, text encoder, projection, and temperature, then run four experiments on the same stack:
 
-## 仓库里有什么
+1. Prompt-based zero-shot classification on CIFAR-100
+2. Bidirectional image–text retrieval on Flickr1K
+3. A frozen linear probe on CLIP image features
+4. Open-ended visual QA with **Qwen3-VL-2B-Instruct**, on the same image CLIP can only score against a fixed candidate list
 
-| 文件 | 说明 |
-|---|---|
-| `从相似度矩阵到视觉问答_CLIP与MLLM能力边界_课堂实战.ipynb` | 可运行的课堂 Notebook（无输出，适合自己从头跑） |
-| `从相似度矩阵到视觉问答_CLIP与MLLM能力边界_课堂实战.executed.ipynb` | 同内容的一次完整运行结果，方便先看图和数字 |
-| `requirements.txt` | Python 依赖（不包含 PyTorch，请按自己的 CUDA 版本安装） |
+**SigLIP 2** is a control, not a second copy of the CLIP experiments. I use it to compare training objectives and what the scores mean (softmax over a candidate set vs independent sigmoid matching).
 
-模型和数据集不会进 Git。第一次运行时会下载 CLIP、SigLIP 2、Qwen3-VL、CIFAR-100 和 Flickr1K。
-
----
-
-## 你会做哪些实验
-
-1. **拆开 CLIP**  
-   不只调用 pipeline。看图像编码器、文本编码器、投影层和温度参数各自干什么，并用 hook 核对中间张量形状。
-
-2. **零样本分类**  
-   把 CIFAR-100 的类别写成英文 prompt，用相似度矩阵当临时分类器。比较单模板和 prompt ensemble。
-
-3. **图文双向检索**  
-   在 Flickr1K 上做 Image→Text 和 Text→Image 的 Recall@K。注意每张图有 5 条描述，正确答案不只在矩阵对角线上。
-
-4. **冻结 CLIP，训练 Linear Probe**  
-   视觉塔不再更新。只在缓存好的图像特征上训练一层线性分类器，并和零样本对比。
-
-5. **Qwen3-VL 视觉问答**  
-   同一张图先让 CLIP 在固定候选里打分，再让 Qwen3-VL 自由生成描述和空间关系。看 chat template、视觉 token、prefill 和 `generate()` 分别做了什么。
-
-课堂建议 3～4 小时。源 Notebook 默认 `QUICK_MODE=True`，只用小子集方便当堂演示。`.executed.ipynb` 是 **完整实验**：CIFAR-100 全量、Flickr1K 全部 1000 张图，并打开了连续视觉问答。
+I did not treat this as four unrelated API demos. The question throughout is: *if a model can only say how similar an image is to a piece of text, what can it still do — and when must you switch to generation?*
 
 ---
 
-## 怎么运行
+## What I implemented
 
-1. 建议使用 GPU。CLIP 三个实验 8GB 显存较舒服；Qwen3-VL-2B 更稳妥的是 12GB 以上。CPU 能加载 CLIP 的小子集，但不适合当堂跑大模型。
+| Experiment | What I wrote | What it measures |
+|---|---|---|
+| Open CLIP | Forward hooks on embeddings / attention / projections; a manual rebuild of `normalize → dot → temperature → softmax` | Whether I am actually using CLIP’s similarity, not a black-box pipeline |
+| Zero-shot | English class prompts; single template vs prompt ensemble | How much the **wording of the label** moves Top-1 / Top-5 |
+| Retrieval | Image→Text and Text→Image Recall@K on Flickr1K (5 captions per image, so the diagonal is not the only correct cell) | Ranking, not generation |
+| Linear probe | Frozen CLIP; sklearn and a 10-epoch PyTorch linear head | How much class signal is already in the visual features |
+| Visual QA | Same beach photo: CLIP picks among 4 captions; Qwen3-VL describes and answers follow-ups | Closed-set matching vs free-form language |
 
-2. 先按 [pytorch.org](https://pytorch.org) 安装匹配本机 CUDA 的 `torch` 和 `torchvision`，再安装其余依赖：
+Models and datasets are downloaded at runtime. They are not in Git.
+
+---
+
+## Full-run numbers
+
+Hardware: RTX 4080 SUPER. Setting: `QUICK_MODE=False` in [`clip_mllm_boundary.executed.ipynb`](clip_mllm_boundary.executed.ipynb). Another GPU or software stack will move the digits.
+
+| Experiment | Protocol | Result |
+|---|---|---|
+| CLIP zero-shot | CIFAR-100, all 10,000 test images | Single template Top-1 **64.47%** / Top-5 88.38%. Prompt ensemble Top-1 **65.05%** / Top-5 88.76% |
+| Linear probe | 50,000 train / 10,000 test, CLIP frozen | sklearn **80.07%**; PyTorch linear head, 10 epochs **79.79%** |
+| Retrieval | Flickr1K, 1,000 images / 5,000 captions | Image→Text R@1 **79.40%**, R@5 95.00%, R@10 98.10%. Text→Image R@1 **58.84%**, R@5 83.46%, R@10 90.04% |
+| CLIP on the beach photo | 4 fixed captions | All probability mass on “a person and a dog on a beach” |
+| Qwen3-VL | Same photo, open description + 4 follow-ups | Names the scene, spatial relation, animal count, indoor/outdoor evidence — none of which CLIP can say unless the caption is already in the list |
+
+A smoke test (`QUICK_MODE=True`) is not the result. On Flickr, going from 100 to 1,000 images dropped Text→Image R@1 from about 84% to about 59%. That is more distractors, not a broken model.
+
+---
+
+## How I read the numbers
+
+- **Prompting is part of the model.** Ensemble vs one template is a small but real lift. The linear probe sitting ~15 points above zero-shot is the larger signal: the visual features already contain a lot of class information. A lot of the remaining zero-shot error is how the class is written in English, not “the encoder is weak.”
+- **CLIP softmax is competition inside the current candidate set**, not a calibrated probability. Change the labels, the numbers move. Leave the true class out and CLIP still picks a winner from the wrong list. It does not abstain.
+- **SigLIP sigmoid scores are not the same kind of number as CLIP softmax.** One is pairwise matching; the other is relative ranking in a row. Do not compare them as if they were the same confidence.
+- **Retrieval is not QA.** CLIP is cheap once vectors are cached. Qwen3-VL can answer a question that was never in the caption list, and it can also invent details that look fluent.
+
+A practical split: CLIP / SigLIP to retrieve a shortlist, then an MLLM to describe, re-rank, or answer.
+
+---
+
+## Reproduce
+
+Use **Transformers 4.57.x**. 5.x changes the return type of CLIP `get_image_features()`. Keep `datasets` on 3.x: Flickr1K still depends on a dataset script.
+
+GPU: CLIP is comfortable at ~8 GB. Qwen3-VL-2B is happier at 12 GB+. CPU can load a CLIP subset; it is not a good way to run the MLLM.
 
 ```bash
+git clone https://github.com/jiayuding866-spec/CLIP-MLLM-.git
+cd CLIP-MLLM-
+
+# install torch / torchvision for your CUDA build from https://pytorch.org first
 pip install -r requirements.txt
 ```
 
-请使用 **Transformers 4.57.x**。5.x 会改变 CLIP `get_image_features()` 的返回类型，这份 Notebook 会报错。`datasets` 请留在 3.x：Flickr1K 仍依赖数据集脚本，4/5 会加载失败。
+Open [`clip_mllm_boundary.ipynb`](clip_mllm_boundary.ipynb) and run all cells. For a smoke test leave `QUICK_MODE = True`. For the table above, set `QUICK_MODE = False` (this is already the setting in the executed notebook).
 
-3. 用 Jupyter / VS Code / Cursor 打开 `.ipynb`，按单元格运行。环境已经配好时，可以跳过第一个 `%pip install` 单元格。
-
-4. 如果访问 `huggingface.co` 很慢或不通（常见于国内机器），在运行前设置镜像：
+If Hugging Face is slow:
 
 ```bash
 export HF_ENDPOINT=https://hf-mirror.com
@@ -63,37 +86,31 @@ export HF_HUB_DISABLE_XET=1
 export HF_DATASETS_TRUST_REMOTE_CODE=1
 ```
 
----
-
-## 一次完整运行的参考数字
-
-下面是在 RTX 4080 SUPER 上、`QUICK_MODE=False` 的全量结果。换机器和软件版本会有差异。
-
-| 实验 | 设定 | 结果 |
-|---|---|---|
-| CLIP 零样本 | CIFAR-100 全部 10000 张测试图 | 单模板 Top-1 **64.47%** / Top-5 88.38%；prompt ensemble Top-1 **65.05%** / Top-5 88.76% |
-| 图文检索 | Flickr1K 全部 1000 张图、5000 条描述 | Image→Text R@1 **79.40%**、R@5 95.00%、R@10 98.10%；Text→Image R@1 **58.84%**、R@5 83.46%、R@10 90.04% |
-| Linear Probe | 全部 50000 训练 / 10000 测试，冻结 CLIP | sklearn **80.07%**；PyTorch 线性头 10 epoch **79.79%** |
-| CLIP 问海滩图 | 4 个固定候选 | “人与狗在海滩”得到全部概率质量 |
-| Qwen3-VL | 同一张图开放描述 + 4 道连续问答 | 能写场景、空间关系、动物数量和室内外证据；CLIP 做不到这种未枚举的回答 |
-
-和课堂小子集相比：Flickr 从 100 张扩到 1000 张后，Text→Image R@1 从约 84% 降到约 59%。干扰项变多了，这是预期现象，不是模型突然变差。
+| File | Role |
+|---|---|
+| [`clip_mllm_boundary.ipynb`](clip_mllm_boundary.ipynb) | Runnable experiment notebook (no outputs) |
+| [`clip_mllm_boundary.executed.ipynb`](clip_mllm_boundary.executed.ipynb) | The full run that produced the table |
+| [`requirements.txt`](requirements.txt) | Python deps (not PyTorch) |
 
 ---
 
-## 读结果时记住的几件事
-
-- CLIP 的 softmax 只是“在当前候选集合里怎么分”，不是校准过的真实把握。候选一变，数字就变。漏掉正确类别时，它仍会从错误选项里挑一个最高分，而不会拒答。
-- SigLIP 的 sigmoid 分数和 CLIP 的 softmax 不能直接比大小。一个是独立的 pairwise 匹配分，一个是行内相对竞争。
-- Linear Probe 高于零样本，说明视觉特征里已经有不少类别信息；差距更常出在文本提示有没有把决策边界用满，而不一定是 encoder “不够强”。
-- Qwen 写得流畅，不等于解释一定真实。生成模型可以编细节。
-
----
-
-## 代码与文档依据
+## References
 
 - [OpenAI CLIP](https://github.com/openai/CLIP)
 - [Transformers CLIP](https://huggingface.co/docs/transformers/model_doc/clip)
 - [Transformers SigLIP 2](https://huggingface.co/docs/transformers/model_doc/siglip2)
 - [Qwen3-VL](https://github.com/QwenLM/Qwen3-VL) / [Qwen3-VL-2B-Instruct](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct)
-- [Flickr1K 检索测试集](https://huggingface.co/datasets/nlphuji/flickr_1k_test_image_text_retrieval)
+- [Flickr1K retrieval split](https://huggingface.co/datasets/nlphuji/flickr_1k_test_image_text_retrieval)
+
+```bibtex
+@inproceedings{radford2021learning,
+  title={Learning Transferable Visual Models From Natural Language Supervision},
+  author={Radford, Alec and Kim, Jong Wook and Hallacy, Chris and Ramesh, Aditya and Goh, Gabriel and Agarwal, Sandhini and Sastry, Girish and Askell, Amanda and Mishkin, Pamela and Clark, Jack and Krueger, Gretchen and Sutskever, Ilya},
+  booktitle={ICML},
+  year={2021}
+}
+```
+
+Code is MIT ([LICENSE](LICENSE)). CLIP, SigLIP, Qwen3-VL, CIFAR-100, and Flickr1K follow their own licences.
+
+Author: [jiayuding866-spec](https://github.com/jiayuding866-spec).
